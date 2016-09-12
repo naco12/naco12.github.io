@@ -1,0 +1,120 @@
+---
+title: "Physical Activity Quality Prediction "
+author: "Narcisse"
+date: "Sep 10, 2016"
+output: html_document
+---
+
+### Introduction
+This work will aim at predicting how well physical activity is done by 6 healthy participants.1st a model will be developped and second the model will be apply to a test set of data to predict how well the physical activity was done. 
+
+### Package loading
+```{r, echo=TRUE, warning=FALSE, results='hide'}
+library(ggplot2)
+library(lattice)
+library(caret)
+library(rpart)
+```
+
+### Data loading and reading
+training and test set are downloaded and read into R
+```{r, echo=TRUE}
+trainurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(trainurl, destfile = "trainset.csv")
+download.file(testurl, destfile = "testset.csv")
+train <- read.csv("trainset.csv")
+test <- read.csv("testset.csv")
+```
+
+### Data Exploration
+in this section unnecessary variables are removed. Covariate are calculated and variables with near zero covariate removed.
+```{r, echo= TRUE, results='hide'}
+summary(train)
+'removing the first 7 variables which are not characteristic of the way the exercise was performed'
+ trainZero <- train[,-c(1:7)]
+ testZero <- test[,-c(1:7)]
+'calculating zero covariate'
+ covar <- nearZeroVar(trainZero,saveMetrics=TRUE)
+ covarVec <- covar$nzv
+ logiccheck <- which(covarVec == TRUE)
+ 'removing zero covariate in training set'
+ trainperf <- trainZero[,-logiccheck]
+ 'removing zero covariate in test set'
+ testperf <- testZero[,-logiccheck]
+```
+
+### handling missing value with k nearest neighbor
+ 
+```{r, echo=TRUE}
+ 'using k nearest neighbor for handling missing data. variable 94 is 1st removed because it is the variable to predict'
+preobjt <- preProcess(trainperf[, -94], method = "knnImpute")
+trainprocess <- predict(preobjt, newdata = trainperf[,-94])
+trainnew <- cbind(trainprocess,"classe" = trainperf[,94])
+testprocess <- predict(preobjt, testperf[,-94])
+testnew <- cbind(testprocess, "problem_id" = testperf[,94])
+```
+
+### the new training data after process is divided in a training and test set
+```{r, echo=TRUE, warning=FALSE}
+set.seed(123)
+trainindex <- createDataPartition(y = trainnew$classe, p=0.75, list = FALSE)
+traindata <- trainnew[trainindex,]
+testdata <- trainnew[-trainindex,]
+```
+
+#### using cross validation with random forest and rpart
+
+random forest and rpart will be used to fit the data and the best model will be used for our final prediction
+```{r, echo=TRUE, warning=FALSE}
+set.seed(123)
+'using cross validation with 10 K folds'
+train_Control <- trainControl(method = "cv", number = 10)
+'fit first model as random forest'
+model <- train(classe~., data = traindata, method = "rf", trControl = train_Control)
+'fit second model with rpart'
+model2 <- train(classe~., data = traindata, method = "rpart", trControl = train_Control)
+```
+
+### Model with best training error
+The tables results below demonstrate that the random forest(first table) has the best training accuracy than the rpart model. We wll therefore use random Forest for our predictions. 
+```{r, echo=TRUE}
+model$results
+model2$results
+```
+
+### Cross validation and model visualisation
+the cross validation as seen in the random forest model above has selected the second model with 47 variables and accuracy of 0.9898 as the best model. the plots below show best model and variables importance
+```{r, echo=TRUE}
+set.seed(123)
+model$finalModel
+' the best model has 47 variables'
+plot(model)
+'the best model has less error. The red curve in the graphic'
+plot(model$finalModel)
+varImp(model,scale =FALSE)
+'plot of the top 20 most important variable'
+plot(varImp(model, scale =FALSE), top = 20)
+```
+
+### Expected Out of Sample prediction for random forset model
+
+```{r, echo=TRUE}
+'RF prediction'
+result1<-predict(model, testdata)
+```
+
+### prediction statistics for random forest model.Expected Out of Sample prediction 
+result below shows a prediction accuracy of about 0.9929. The Out Of Bag (OOB) estimate as given in model above is around 0.92%
+```{r, echo=TRUE}
+'RF prediction'
+result1<-predict(model, testdata)
+
+confusionMatrix(testdata$classe, result1)
+```
+
+### Part 2 of the exercise. We are using our model to predict 20 classe.
+
+```{r, echo=TRUE}
+predict(model, testnew)
+```
